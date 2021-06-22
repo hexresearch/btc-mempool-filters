@@ -1,5 +1,5 @@
 [package]
-name = "mempool-filters"
+name = "mempool_filters"
 version = "0.1.0"
 authors = ["Levon Oganyan <lemarwin@protonmail.com>"]
 edition = "2018"
@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 bitcoin =  { version = "^0.26", features = [ "rand" ] }
 bitcoin_hashes = "^0.9"
-bitcoin-utxo = { path = "../bitcoin-utxo" }
+# bitcoin-utxo = { path = "../bitcoin-utxo" }
 # bitcoin-utxo = { git = "https://github.com/hexresearch/bitcoin-utxo", rev = "de9edf6e6fdae353842181b14337b88483b03461" }
 byte-strings = "^0.1"
 byteorder = "1"
@@ -28,6 +28,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = { version = "^0.6", features = [ "codec" ] }
 lazy_static = "1.4.0"
+sha2 = "0.9.5"
 
 [dev-dependencies]
 hex = "0.4.3"

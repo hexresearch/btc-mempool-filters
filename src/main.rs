@@ -1,3 +1,6 @@
+pub mod txtree;
+
 fn main() {
-    println!("Hello World!");
+    // let a : [u8;2] = [108, 111];
+    txtree::tst()
 }
