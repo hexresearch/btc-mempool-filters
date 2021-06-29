@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 use bitcoin::{Transaction, Txid};
 use bitcoin_hashes::Hash;
@@ -10,16 +10,16 @@ pub type TxPrefix = [u8;TX_PREFIX_BYTES];
 
 #[derive(Debug)]
 pub struct TxTree {
-    pub txtreemap : HashMap<TxPrefix, HashMap <Txid, Transaction>>
+    pub tx_tree : HashMap<TxPrefix, HashMap <Txid, Transaction>>
 }
 
 impl TxTree {
     pub fn new() -> TxTree{
-        TxTree { txtreemap: HashMap::new() }
+        TxTree { tx_tree: HashMap::new() }
     }
 
     pub fn iter(&self) -> Iter<'_, TxPrefix, HashMap <Txid, Transaction> >{
-        self.txtreemap.iter()
+        self.tx_tree.iter()
     }
 
     pub fn insert_batch (&mut self, txs: Vec<Transaction>){
@@ -28,12 +28,8 @@ impl TxTree {
 
     pub fn insert_single(&mut self, tx : &Transaction){
         let txid = tx.txid();
-        let mut key : TxPrefix = [0;TX_PREFIX_BYTES];
-        key.copy_from_slice(&txid.into_inner()[0..TX_PREFIX_BYTES]);
-        for i in 0..TX_PREFIX_BYTES {
-            key[i] = key[i] &  TX_PREFIX_MASK[i]
-        }
-        self.txtreemap.entry(key)
+        let key = make_prefix(tx);
+        self.tx_tree.entry(key)
             .and_modify(|v| { v.insert(txid, tx.clone());})
             .or_insert_with(|| {
                 let mut hm = HashMap::new();
@@ -45,18 +41,18 @@ impl TxTree {
     pub fn remove_single(&mut self, tx: &Transaction){
         let txid = tx.txid();
         let key = make_prefix(tx);
-        self.txtreemap.entry(key).and_modify(|txs| {txs.remove(&txid);});
-        let emp = self.txtreemap.get(&key).map(|txs| txs.is_empty()).unwrap_or(false);
-        if emp {self.txtreemap.remove(&key);}
+        self.tx_tree.entry(key).and_modify(|txs| {txs.remove(&txid);});
+        let emp = self.tx_tree.get(&key).map(|txs| txs.is_empty()).unwrap_or(false);
+        if emp {self.tx_tree.remove(&key);}
     }
 
     pub fn remove_batch (&mut self, txs: Vec<Transaction>){
         txs.iter().for_each(|tx| {
             let txid = tx.txid();
             let key = make_prefix(tx);
-            self.txtreemap.entry(key).and_modify(|txs| {txs.remove(&txid);});
+            self.tx_tree.entry(key).and_modify(|txs| {txs.remove(&txid);});
         });
-        self.txtreemap.retain(|_,v| !v.is_empty());
+        self.tx_tree.retain(|_,v| !v.is_empty());
     }
 }
 

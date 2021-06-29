@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 bitcoin =  { version = "^0.26", features = [ "rand" ] }
 bitcoin_hashes = "^0.9"
-# bitcoin-utxo = { path = "../bitcoin-utxo" }
+bitcoin-utxo = { path = "../bitcoin-utxo" }
 # bitcoin-utxo = { git = "https://github.com/hexresearch/bitcoin-utxo", rev = "de9edf6e6fdae353842181b14337b88483b03461" }
 byte-strings = "^0.1"
 byteorder = "1"
@@ -18,17 +18,18 @@ bytes = "1"
 chrono = "^0.4"
 consensus-encode = { git = "https://github.com/NCrashed/consensus-encode", rev="8c04d05aecc1d0f320fb1ebed0878772c1e83c72" }
 dashmap = "4.0"
-ergvein-filters = { git = "https://github.com/hexresearch/ergvein-filters", rev = "23500d2848cec0d7925834b1a3578697af729039" }
+ergvein-filters = { path = "../ergvein-filters"}
+# ergvein-filters = { git = "https://github.com/hexresearch/ergvein-filters", rev = "23500d2848cec0d7925834b1a3578697af729039" }
 futures = "0.3"
+lazy_static = "1.4.0"
 rayon = "1.5.0"
 rocksdb = "0.15.0"
+sha2 = "0.9.5"
 thiserror = "1.0"
 time = "0.2.26"
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1"
 tokio-util = { version = "^0.6", features = [ "codec" ] }
-lazy_static = "1.4.0"
-sha2 = "0.9.5"
 
 [dev-dependencies]
 hex = "0.4.3"
