@@ -12,9 +12,9 @@ use bitcoin::network::constants;
 
 use bitcoin_utxo::connection::connect;
 
-
-use mempool_filters::filtertree::FilterTree;
 use futures::pin_mut;
+
+use mempool_filters::filtertree::*;
 
 use mempool_filters::txtree::TxTree;
 
@@ -46,14 +46,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     tokio::spawn(async move {
-        let mut filt_tree = FilterTree::new();
+        let filt_tree = FilterTree::new();
         loop {
             let txtree = txtree.clone();
             tokio::time::sleep(Duration::from_secs(30)).await;
-            {
-                filt_tree.make_filters(&txtree, foo);
-            }
-            println!("{:?}", filt_tree.full_filter);
+            make_filters(&filt_tree, &txtree, foo);
+            let full_filter = make_full_filter(&txtree, foo).unwrap();
+            println!("{:?}", full_filter);
         }
     });
     pin_mut!(msg_sink);
