@@ -1,59 +1,39 @@
 use std::collections::HashMap;
-use std::collections::hash_map::Iter;
 use bitcoin::{Transaction, Txid};
 use bitcoin_hashes::Hash;
+use dashmap::DashMap;
+
 
 pub const TX_PREFIX_BYTES : usize = 2;
 pub const TX_PREFIX_MASK : [u8;TX_PREFIX_BYTES] = [0b11111111,0b11000000];
 
 pub type TxPrefix = [u8;TX_PREFIX_BYTES];
 
-#[derive(Debug)]
-pub struct TxTree {
-    pub tx_tree : HashMap<TxPrefix, HashMap <Txid, Transaction>>
+pub type TxTree = DashMap<TxPrefix, HashMap<Txid, Transaction>>;
+
+pub fn insert_tx(txtree: &TxTree, tx: &Transaction){
+    let txid = tx.txid();
+    let key = make_prefix(tx);
+    txtree.entry(key)
+        .and_modify(|v| { v.insert(txid, tx.clone());})
+        .or_insert_with(|| {
+            let mut hm = HashMap::new();
+            hm.insert(txid, tx.clone());
+            hm
+        });
 }
 
-impl TxTree {
-    pub fn new() -> TxTree{
-        TxTree { tx_tree: HashMap::new() }
-    }
+pub fn insert_tx_batch (txtree: &TxTree, txs: Vec<Transaction>){
+    txs.iter().for_each(|tx| insert_tx(txtree, tx));
+}
 
-    pub fn iter(&self) -> Iter<'_, TxPrefix, HashMap <Txid, Transaction> >{
-        self.tx_tree.iter()
-    }
-
-    pub fn insert_batch (&mut self, txs: Vec<Transaction>){
-        txs.iter().for_each(|tx| self.insert_single(tx));
-    }
-
-    pub fn insert_single(&mut self, tx : &Transaction){
+pub fn remove_batch(txtree: &TxTree, txs: Vec<&Transaction>){
+    txs.iter().for_each(|tx| {
         let txid = tx.txid();
         let key = make_prefix(tx);
-        self.tx_tree.entry(key)
-            .and_modify(|v| { v.insert(txid, tx.clone());})
-            .or_insert_with(|| {
-                let mut hm = HashMap::new();
-                hm.insert(txid, tx.clone());
-                hm
-            });
-    }
-
-    pub fn remove_single(&mut self, tx: &Transaction){
-        let txid = tx.txid();
-        let key = make_prefix(tx);
-        self.tx_tree.entry(key).and_modify(|txs| {txs.remove(&txid);});
-        let emp = self.tx_tree.get(&key).map(|txs| txs.is_empty()).unwrap_or(false);
-        if emp {self.tx_tree.remove(&key);}
-    }
-
-    pub fn remove_batch (&mut self, txs: Vec<Transaction>){
-        txs.iter().for_each(|tx| {
-            let txid = tx.txid();
-            let key = make_prefix(tx);
-            self.tx_tree.entry(key).and_modify(|txs| {txs.remove(&txid);});
-        });
-        self.tx_tree.retain(|_,v| !v.is_empty());
-    }
+        txtree.entry(key).and_modify(|txs| {txs.remove(&txid);});
+    });
+    txtree.retain(|_,v| !v.is_empty());
 }
 
 pub fn make_prefix(tx: &Transaction) -> TxPrefix{

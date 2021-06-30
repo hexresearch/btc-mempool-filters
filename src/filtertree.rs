@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Iter;
 
+
+use bitcoin::Transaction;
 use bitcoin::{Script, OutPoint};
 
 use bitcoin_hashes::Hash;
@@ -30,15 +32,18 @@ impl FilterTree {
     pub fn make_filters<M>(&mut self, txtree: &TxTree, script_getter: M)
         where M: Fn(&OutPoint) -> Result<Script, bitcoin::util::bip158::Error>{
         self.filt_tree.clear();
-        for (pref, txs) in txtree.iter(){
+        txtree.into_iter().for_each(|kv| {
+            let (pref,txs) = kv.pair();
             let (k0, k1) = mk_siphash_keys(pref);
             let filt = ErgveinMempoolFilter::new_script_filter(k0, k1, txs.values().cloned().collect(), &script_getter);
             filt.map_or_else(|_| (), |f| {
                 self.filt_tree.insert(pref.clone(), f);
             });
-        }
+        });
         let (k0,k1) = self.get_full_prefix();
-        let txs : Vec<bitcoin::Transaction> = txtree.tx_tree.values().map(|tmap| tmap.values()).flatten().cloned().collect();
+        let txs : Vec<Transaction> = txtree.iter().flat_map(|tmap|
+                tmap.values().cloned().collect::<Vec<Transaction>>()
+            ).collect();
         let filt = ErgveinMempoolFilter::new_script_filter(k0, k1, txs, &script_getter);
         self.full_filter = filt.ok();
     }

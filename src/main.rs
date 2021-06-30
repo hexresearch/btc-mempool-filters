@@ -16,7 +16,7 @@ use bitcoin_utxo::connection::connect;
 use mempool_filters::filtertree::FilterTree;
 use futures::pin_mut;
 
-use mempool_filters::txtree::TxTree;use tokio::sync::*;
+use mempool_filters::txtree::TxTree;
 
 use futures::future::{AbortHandle, Abortable};
 
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let address: SocketAddr = "127.0.0.1:8333".parse().unwrap();
 
-    let txtree = Arc::new(Mutex::new(TxTree::new()));
+    let txtree = Arc::new(TxTree::new());
     let (sync_future, msg_sink, msg_stream) = mempool_filters::worker::sync_mempool(txtree.clone()).await;
     let (_, abort_server_reg) = AbortHandle::new_pair();
     tokio::spawn(async move {
@@ -51,7 +51,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let txtree = txtree.clone();
             tokio::time::sleep(Duration::from_secs(30)).await;
             {
-                let txtree = txtree.lock().await;
                 filt_tree.make_filters(&txtree, foo);
             }
             println!("{:?}", filt_tree.full_filter);

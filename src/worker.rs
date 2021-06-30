@@ -2,7 +2,6 @@ use std::sync::Arc;
 use bitcoin::consensus::encode;
 use bitcoin::network::message::NetworkMessage;
 use futures::Future;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -10,11 +9,12 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use crate::error::MempoolErrors;
 
 use crate::txtree::TxTree;
-use futures::sink;
+
+use crate::txtree::insert_tx;use futures::sink;
 use bitcoin::network::message_blockdata::Inventory;
 
 pub async fn sync_mempool(
-    txtree: Arc<Mutex<TxTree>>,
+    txtree: Arc<TxTree>,
 ) -> (
     impl Future<Output = Result<(), MempoolErrors>>,
     impl futures::Sink<NetworkMessage, Error = encode::Error>,
@@ -41,7 +41,7 @@ pub async fn sync_mempool(
 }
 
 pub async fn mempool_worker(
-    txtree: Arc<Mutex<TxTree>>,
+    txtree: Arc<TxTree>,
     broad_sender: &broadcast::Sender<NetworkMessage>,
     msg_sender: &mpsc::UnboundedSender<NetworkMessage>,
 ) -> Result<(), MempoolErrors>{
@@ -61,8 +61,8 @@ pub async fn mempool_worker(
                             .map_err(|e| { println!("Error when requesting txs: {:?}", e); MempoolErrors::MempoolRequestFail})?;
                     },
                     NetworkMessage::Tx(tx) => {
-                        let mut txtree = txtree.lock().await;
-                        txtree.insert_single(&tx);
+                        let txtree = txtree.clone();
+                        insert_tx(&txtree, &tx);
                     }
                     _ => ()
                 },
