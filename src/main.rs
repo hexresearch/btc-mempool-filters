@@ -17,6 +17,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct FilterCoin {
@@ -62,7 +63,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let txtree = Arc::new(TxTree::new());
     let ftree = Arc::new(FilterTree::new());
     let full_filter = Arc::new(Mutex::new(None));
-    let (tx_future, filt_future, msg_sink, msg_stream) = mempool_worker(txtree, ftree, full_filter, db, cache, extract_script).await;
+    let sync_mutex = Arc::new(Mutex::new(()));
+    let filter_delay = Duration::from_secs(30);
+    let (tx_future, filt_future, msg_sink, msg_stream) = mempool_worker(txtree, ftree, full_filter, db, cache, sync_mutex, extract_script, filter_delay).await;
     let (_, abort_server_reg) = AbortHandle::new_pair();
 
     tokio::spawn(async move {

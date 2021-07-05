@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use bitcoin::{Transaction, Txid};
+use bitcoin::{Script, OutPoint, Transaction, Txid};
 use bitcoin_hashes::Hash;
 use dashmap::DashMap;
 
@@ -13,7 +13,7 @@ pub type TxTree = DashMap<TxPrefix, HashMap<Txid, Transaction>>;
 
 pub fn insert_tx(txtree: &TxTree, tx: &Transaction){
     let txid = tx.txid();
-    let key = make_prefix(tx);
+    let key = make_prefix(&txid);
     txtree.entry(key)
         .and_modify(|v| { v.insert(txid, tx.clone());})
         .or_insert_with(|| {
@@ -27,17 +27,16 @@ pub fn insert_tx_batch (txtree: &TxTree, txs: Vec<Transaction>){
     txs.iter().for_each(|tx| insert_tx(txtree, tx));
 }
 
-pub fn remove_batch(txtree: &TxTree, txs: Vec<&Transaction>){
+pub fn remove_batch(txtree: &TxTree, txs: &Vec<Transaction>){
     txs.iter().for_each(|tx| {
         let txid = tx.txid();
-        let key = make_prefix(tx);
+        let key = make_prefix(&txid);
         txtree.entry(key).and_modify(|txs| {txs.remove(&txid);});
     });
     txtree.retain(|_,v| !v.is_empty());
 }
 
-pub fn make_prefix(tx: &Transaction) -> TxPrefix{
-    let txid = tx.txid();
+pub fn make_prefix(txid: &Txid) -> TxPrefix{
     let mut key : TxPrefix = [0;TX_PREFIX_BYTES];
     key.copy_from_slice(&txid.into_inner()[0..TX_PREFIX_BYTES]);
     for i in 0..TX_PREFIX_BYTES {
@@ -61,4 +60,12 @@ pub fn tst () {
     println!("{:?}{:?}", k1,k2);
     let q : Vec<String> = key.iter().map(|v| format!("{:b}", v)).collect();
     println!("{:?}", q);
+}
+
+pub fn get_transaction_script(txtree: &TxTree, out: &OutPoint) -> Option<Script>{
+    let txid = &out.txid;
+    let pref = make_prefix(txid);
+    let txs = txtree.get(&pref)?;
+    let tx = txs.get(txid)?;
+    Some(tx.output[out.vout as usize].script_pubkey.clone())
 }
