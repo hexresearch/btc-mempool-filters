@@ -11,7 +11,10 @@ use bitcoin::Script;
 use bitcoin::util::bip158;
 use ergvein_filters::mempool::ErgveinMempoolFilter;
 use futures::Future;
-use futures::sink;
+
+use futures::future::AbortHandle;
+
+use futures::future::Abortable;use futures::sink;
 use rocksdb::DB;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -30,7 +33,7 @@ use crate::txtree::get_transaction_script;
 use crate::txtree::insert_tx;
 use crate::txtree::TxTree;
 use crate::txtree::remove_batch;
-
+use crate::txtree::tx_tree_count;
 
 pub async fn mempool_worker<T, M>(
     txtree: Arc<TxTree>,
@@ -109,16 +112,56 @@ M:Fn(&T) -> Script + Copy
 {
     println!("[filter_worker]: Starting");
     let mut hashmap = HashMap::<OutPoint, Script>::new();
+    let mut timeout = 10;
+    let mut err_cnt = 0;
+    let mut succ_cnt = 0;
     loop {
         tokio::time::sleep(filter_delay).await;
         { // Make sure the utxo cache is fully synced before attempting to make filters
-            sync_mutex.lock().await;
+            let _guard = sync_mutex.lock().await;
             hashmap.clear();
-            println!("[filter_worker]: Attempting to make filters");
-            fill_tx_map(txtree.clone(), db.clone(), cache.clone(), &mut hashmap, broad_sender, msg_sender, script_from_t).await;
+            let timeout_future = tokio::time::sleep(Duration::from_secs(timeout));
+            let new_block_future = wait_for_block(&broad_sender);
+            let (timeout_handle, timeout_reg) = AbortHandle::new_pair();
+            tokio::pin!(timeout_future);
+            let fill_fut = Abortable::new(
+                fill_tx_map(
+                    txtree.clone(),
+                    db.clone(),
+                    cache.clone(),
+                    &mut hashmap,
+                    broad_sender,
+                    msg_sender,
+                    script_from_t)
+                ,timeout_reg);
+            tokio::select!{
+                _ = &mut timeout_future => {
+                    println!("Hashmap filling timed out");
+                    timeout_handle.abort();
+                    // increase timeout for the next try. Just in case the default timeout was not enough
+                    timeout += timeout.wrapping_div(5);
+                }
+                _ = new_block_future => {
+                    println!("A new block interrupted filter making. Aborting filters!");
+                    timeout_handle.abort();
+                }
+                res = fill_fut => {
+                    match res {
+                        Ok(_) => println!("[filter_worker]: Fill success. Attempting to make filters"),
+                        Err(e) => eprint!("Failed to fill inputs! {:?}", e)
+                    }
+                    timeout = 10;
+                }
+            };
+
         } // Unlock sync_mutex, sine we don't need the cache anymore
         make_filters(&ftree, &txtree, |out| {
-            hashmap.get(out).map_or( Err(bip158::Error::UtxoMissing(*out)), |s| Ok(s.clone()))
+            hashmap.get(out).map_or( {
+                let e = Err(bip158::Error::UtxoMissing(*out));
+                eprintln!("Failed to extract the script for: {:?}", e);
+                e
+            }, |s| Ok(s.clone()))
+
         });
 
         let ff = make_full_filter(&txtree, |out| {
@@ -127,7 +170,9 @@ M:Fn(&T) -> Script + Copy
         {
             let mut ffref = full_filter.lock().await;
             *ffref = ff;
-            println!("Filter: {:?}", ffref);
+            let l = ffref.as_ref().map(|f| f.content.len());
+            if ffref.is_none() { err_cnt += 1; } else { succ_cnt +=1; }
+            println!("Filter len: {:?}. Transactions in mempool: {}. Succ: {}. Error: {}", l, tx_tree_count(&txtree), succ_cnt, err_cnt);
         }
         println!("[filter_worker]: Filters done");
     };
@@ -149,7 +194,7 @@ pub async fn tx_listener(
                             Inventory::WitnessTransaction(_) => true,
                             _ => false
                         }).cloned().collect();
-                        println!("Received {:?} invs. Of which {:?} are txs", ids.len(), txids.len());
+                        // println!("Received {:?} invs. Of which {:?} are txs", ids.len(), txids.len());
                         msg_sender.send(NetworkMessage::GetData(txids))
                             .map_err(|e| { println!("Error when requesting txs: {:?}", e); MempoolErrors::MempoolRequestFail})?;
                     },
@@ -305,4 +350,21 @@ M:Fn(&T) -> Script + Copy
         }
     }
     res
+}
+
+async fn wait_for_block(
+    broad_sender: &broadcast::Sender<NetworkMessage>,
+){
+    let mut receiver = broad_sender.subscribe();
+    loop {
+        let emsg = receiver.recv().await;
+        match emsg {
+            Err(_) => {},
+            Ok(msg) => match msg{
+                NetworkMessage::Block(_) => break,
+                _ => ()
+            }
+
+        }
+    }
 }

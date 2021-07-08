@@ -23,6 +23,10 @@ pub fn insert_tx(txtree: &TxTree, tx: &Transaction){
         });
 }
 
+pub fn tx_tree_count(txtree: &TxTree) -> usize{
+    txtree.iter().map(|txs| txs.values().count()).sum()
+}
+
 pub fn insert_tx_batch (txtree: &TxTree, txs: Vec<Transaction>){
     txs.iter().for_each(|tx| insert_tx(txtree, tx));
 }
