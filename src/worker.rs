@@ -43,7 +43,8 @@ pub async fn mempool_worker<T, M>(
     cache: Arc<UtxoCache<T>>,
     sync_mutex: Arc<Mutex<()>>,
     script_from_t : M,
-    filter_delay: Duration
+    filter_delay: Duration,
+    hashmap_timeout: Duration,
 ) -> (
     impl Future<Output = Result<(), MempoolErrors>>,
     impl Future<Output = Result<(), MempoolErrors>>,
@@ -81,7 +82,8 @@ M:Fn(&T) -> Script + Copy
                 cache.clone(),
                 sync_mutex.clone(),
                 script_from_t,
-                filter_delay
+                filter_delay,
+                hashmap_timeout
             ).await
         }
     };
@@ -104,7 +106,8 @@ pub async fn filter_worker<T, M>(
     cache: Arc<UtxoCache<T>>,
     sync_mutex: Arc<Mutex<()>>,
     script_from_t : M,
-    filter_delay: Duration
+    filter_delay: Duration,
+    hashmap_timeout: Duration,
 ) -> Result<(), MempoolErrors>
 where
 T:Decodable + Clone,
@@ -112,7 +115,7 @@ M:Fn(&T) -> Script + Copy
 {
     println!("[filter_worker]: Starting");
     let mut hashmap = HashMap::<OutPoint, Script>::new();
-    let mut timeout = 10;
+    let mut timeout = hashmap_timeout;
     let mut err_cnt = 0;
     let mut succ_cnt = 0;
     loop {
@@ -120,7 +123,7 @@ M:Fn(&T) -> Script + Copy
         { // Make sure the utxo cache is fully synced before attempting to make filters
             let _guard = sync_mutex.lock().await;
             hashmap.clear();
-            let timeout_future = tokio::time::sleep(Duration::from_secs(timeout));
+            let timeout_future = tokio::time::sleep(timeout);
             let new_block_future = wait_for_block(&broad_sender);
             let (timeout_handle, timeout_reg) = AbortHandle::new_pair();
             tokio::pin!(timeout_future);
@@ -138,8 +141,8 @@ M:Fn(&T) -> Script + Copy
                 _ = &mut timeout_future => {
                     println!("Hashmap filling timed out");
                     timeout_handle.abort();
-                    // increase timeout for the next try. Just in case the default timeout was not enough
-                    timeout += timeout.wrapping_div(5);
+                    // increase timeout for the next try by 1.25. Just in case the default timeout was not enough
+                    timeout = timeout.mul_f64(1.25);
                 }
                 _ = new_block_future => {
                     println!("A new block interrupted filter making. Aborting filters!");
@@ -150,13 +153,14 @@ M:Fn(&T) -> Script + Copy
                         Ok(_) => println!("[filter_worker]: Fill success. Attempting to make filters"),
                         Err(e) => eprint!("Failed to fill inputs! {:?}", e)
                     }
-                    timeout = 10;
+                    // set the timeout to the default value
+                    timeout = hashmap_timeout;
                 }
             };
 
         } // Unlock sync_mutex, sine we don't need the cache anymore
         make_filters(&ftree, &txtree, |out| {
-            hashmap.get(out).map_or( {
+            hashmap.get(out).map_or_else( || {
                 let e = Err(bip158::Error::UtxoMissing(*out));
                 eprintln!("Failed to extract the script for: {:?}", e);
                 e
@@ -165,7 +169,7 @@ M:Fn(&T) -> Script + Copy
         });
 
         let ff = make_full_filter(&txtree, |out| {
-            hashmap.get(out).map_or( Err(bip158::Error::UtxoMissing(*out)), |s| Ok(s.clone()))
+            hashmap.get(out).map_or_else(|| Err(bip158::Error::UtxoMissing(*out)), |s| Ok(s.clone()))
         }).map_err(|e| eprintln!("Error making the full filter! {:?}", e)).ok();
         {
             let mut ffref = full_filter.lock().await;

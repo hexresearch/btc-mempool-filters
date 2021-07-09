@@ -65,7 +65,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let full_filter = Arc::new(Mutex::new(None));
     let sync_mutex = Arc::new(Mutex::new(()));
     let filter_delay = Duration::from_secs(30);
-    let (tx_future, filt_future, msg_sink, msg_stream) = mempool_worker(txtree, ftree, full_filter, db, cache, sync_mutex, extract_script, filter_delay).await;
+    let hashmap_timeout = Duration::from_secs(10);
+    let (tx_future, filt_future, msg_sink, msg_stream) = mempool_worker(
+        txtree,
+        ftree,
+        full_filter,
+        db,
+        cache,
+        sync_mutex,
+        extract_script,
+        filter_delay,
+        hashmap_timeout ).await;
     let (_, abort_server_reg) = AbortHandle::new_pair();
 
     tokio::spawn(async move {
