@@ -1,10 +1,6 @@
-use bitcoin::Transaction;
-use bitcoin::{Script, OutPoint};
-
 use bitcoin_hashes::Hash;
-
+use bitcoin::{Transaction, Script, OutPoint};
 use consensus_encode::util::endian;
-
 use dashmap::DashMap;
 use ergvein_filters::mempool::ErgveinMempoolFilter;
 
