@@ -3,14 +3,14 @@ use bitcoin::{
     hashes::hex::FromHex,
     Transaction
 };
-use mempool_filters::txtree::*;
+use crate::txtree::*;
 use std::io;
 use std::io::BufRead;
 
 #[test]
 fn correct_inputs(){
     let mut txtree = TxTree::new();
-    let txs = load_txs("./tests/block1-txs");
+    let txs = load_txs("./test/block1-txs");
     insert_tx_batch(&mut txtree, txs.clone());
     for tx in txs.iter() {
         let txid = &tx.txid();
@@ -24,7 +24,7 @@ fn correct_inputs(){
 #[test]
 fn correct_removal() {
     let mut txtree = TxTree::new();
-    let txs = load_txs("./tests/block1-txs");
+    let txs = load_txs("./test/block1-txs");
     insert_tx_batch(&mut txtree, txs.clone());
     let (todel, tokeep) = txs.split_at(10);
     remove_batch(&txtree, &todel.to_vec());

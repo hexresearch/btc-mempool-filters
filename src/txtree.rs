@@ -3,6 +3,9 @@ use bitcoin::{Script, OutPoint, Transaction, Txid};
 use bitcoin_hashes::Hash;
 use dashmap::DashMap;
 
+#[cfg(test)]
+mod test;
+
 /// Tx prefix length
 pub const TX_PREFIX_BYTES : usize = 2;
 

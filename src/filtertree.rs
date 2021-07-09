@@ -5,6 +5,8 @@ use dashmap::DashMap;
 use ergvein_filters::mempool::ErgveinMempoolFilter;
 
 use crate::txtree::{TxPrefix, TxTree};
+#[cfg(test)]
+mod test;
 
 /// Main type. Stores filters to corresponding branches of `TxTree`
 /// We store full filter separately to take advantage of DashMap's concurrency

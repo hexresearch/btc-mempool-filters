@@ -4,15 +4,15 @@ use bitcoin::{
     OutPoint, Script, Transaction
 };
 use ergvein_filters::util::is_script_indexable;
-use mempool_filters::filtertree::*;
-use mempool_filters::txtree::*;
+use crate::filtertree::*;
+use crate::txtree::*;
 use std::io;
 use std::io::BufRead;
 
 #[test]
 fn full_filter(){
     let mut txtree = TxTree::new();
-    let txs = load_txs("./tests/block1-txs");
+    let txs = load_txs("./test/block1-txs");
     insert_tx_batch(&mut txtree, txs.clone());
     let filter = make_full_filter(&txtree, emptyscripts).expect("Failed to match tx! ");
     let (k0,k1) = get_full_prefix();
@@ -28,7 +28,7 @@ fn full_filter(){
 #[test]
 fn bucket_filters(){
     let mut txtree = TxTree::new();
-    let txs = load_txs("./tests/block1-txs");
+    let txs = load_txs("./test/block1-txs");
     insert_tx_batch(&mut txtree, txs.clone());
 
     let ftree = FilterTree::new();
