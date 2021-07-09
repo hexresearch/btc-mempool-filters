@@ -46,7 +46,7 @@ pub fn insert_tx_batch(txtree: &TxTree, txs: Vec<Transaction>) {
 
 /// Remove a batch of transactions from `TxTree`
 /// Prune empty branches after `Transaction` removal
-pub fn remove_batch(txtree: &TxTree, txs: &Vec<Transaction>) {
+pub fn remove_batch(txtree: &TxTree, txs: &[Transaction]) {
     txs.iter().for_each(|tx| {
         let txid = tx.txid();
         let key = make_prefix(&txid);
@@ -62,9 +62,9 @@ pub fn make_prefix(txid: &Txid) -> TxPrefix {
     let mut key: TxPrefix = [0; TX_PREFIX_BYTES];
     key.copy_from_slice(&txid.into_inner()[0..TX_PREFIX_BYTES]);
     for i in 0..TX_PREFIX_BYTES {
-        key[i] = key[i] & TX_PREFIX_MASK[i]
+        key[i] &= TX_PREFIX_MASK[i]
     }
-    return key;
+    key
 }
 
 /// Get the script associated with the `OutPoint`

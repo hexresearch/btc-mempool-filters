@@ -63,7 +63,6 @@ where
     };
     let filt_future = {
         let broad_sender = broad_sender.clone();
-        let msg_sender = msg_sender.clone();
         async move {
             filter_worker(
                 txtree.clone(),

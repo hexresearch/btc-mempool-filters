@@ -110,7 +110,7 @@ where
                 succ_cnt += 1;
             }
             println!(
-                "Filter len: {:?}. Transactions in mempool: {}. Succ: {}. Error: {}",
+                "Filter len: {:?} bytes. Txs in mempool: {}. Totals: Succ: {}. Error: {}",
                 l,
                 tx_tree_count(&txtree),
                 succ_cnt,
@@ -128,10 +128,7 @@ async fn wait_for_block(broad_sender: &broadcast::Sender<NetworkMessage>) {
         let emsg = receiver.recv().await;
         match emsg {
             Err(_) => {}
-            Ok(msg) => match msg {
-                NetworkMessage::Block(_) => break,
-                _ => (),
-            },
+            Ok(msg) => if let NetworkMessage::Block(_) = msg { break },
         }
     }
 }

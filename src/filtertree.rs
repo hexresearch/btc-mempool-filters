@@ -37,7 +37,7 @@ where
         filt.map_or_else(
             |_| (),
             |f| {
-                ftree.insert(pref.clone(), f);
+                ftree.insert(*pref, f);
             },
         );
     });

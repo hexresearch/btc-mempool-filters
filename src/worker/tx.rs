@@ -25,11 +25,9 @@ pub async fn tx_listener(
             emsg = receiver.recv() => match emsg {
                 Ok(msg) => match msg {
                     NetworkMessage::Inv(ids) => {
-                        let txids : Vec<Inventory>= ids.iter().filter(|i| match i {
-                            Inventory::Transaction(_) => true,
-                            Inventory::WitnessTransaction(_) => true,
-                            _ => false
-                        }).cloned().collect();
+                        let txids : Vec<Inventory>= ids.iter().filter(|i|
+                            matches!(i, Inventory::Transaction(_) | Inventory::WitnessTransaction(_))
+                        ).cloned().collect();
                         msg_sender.send(NetworkMessage::GetData(txids))
                             .map_err(|e| {
                                 println!("Error when requesting txs: {:?}", e);

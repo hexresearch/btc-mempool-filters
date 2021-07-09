@@ -44,7 +44,7 @@ pub(crate) async fn fill_tx_map<T, M>(
                         script_from_t,
                     )
                     .await;
-                    stx.map(|tx| extra.push(tx));
+                    if let Some(tx) = stx { extra.push(tx) }
                 }
             }
         }
@@ -64,7 +64,7 @@ pub(crate) async fn fill_tx_map<T, M>(
                     script_from_t,
                 )
                 .await;
-                stx.map(|tx| next_extra.push(tx));
+                if let Some(tx) = stx { next_extra.push(tx) }
             }
         }
         extra = next_extra;
@@ -96,20 +96,20 @@ where
     let coin = get_utxo_noh(&db.clone(), &cache.clone(), &i);
     match coin {
         Some(c) => {
-            hashmap.insert(i.clone(), script_from_t(&c));
+            hashmap.insert(*i, script_from_t(&c));
         }
         None => {
             let mscript = get_transaction_script(&txtree, i);
             match mscript {
                 Some(script) => {
-                    hashmap.insert(i.clone(), script);
+                    hashmap.insert(*i, script);
                 }
                 None => {
                     let stx = request_mempool_tx(i.txid, broad_sender, msg_sender).await;
                     match stx {
                         Ok(tx) => {
                             let script = tx.output[i.vout as usize].script_pubkey.clone();
-                            hashmap.insert(i.clone(), script);
+                            hashmap.insert(*i, script);
                             res = Some(tx);
                         }
                         Err(_) => {
