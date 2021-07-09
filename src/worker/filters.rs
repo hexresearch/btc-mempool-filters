@@ -1,25 +1,18 @@
 use bitcoin::{
-    consensus::Decodable,
-    network::message::NetworkMessage,
-    util::bip158,
-    OutPoint,Script
+    consensus::Decodable, network::message::NetworkMessage, util::bip158, OutPoint, Script,
 };
 use bitcoin_utxo::cache::utxo::UtxoCache;
 use ergvein_filters::mempool::ErgveinMempoolFilter;
-use futures::future::{Abortable, AbortHandle};
+use futures::future::{AbortHandle, Abortable};
 use rocksdb::DB;
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::Duration
-};
-use tokio::sync::{Mutex, mpsc, broadcast};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::{
     error::MempoolErrors,
-    filtertree::{FilterTree, make_filters, make_full_filter},
-    txtree::{TxTree, tx_tree_count},
-    worker::util::fill_tx_map
+    filtertree::{make_filters, make_full_filter, FilterTree},
+    txtree::{tx_tree_count, TxTree},
+    worker::util::fill_tx_map,
 };
 
 /// Sub-worker. Builds filters based on the current mempool
@@ -41,13 +34,13 @@ pub async fn filter_worker<T, M>(
     db: Arc<DB>,
     cache: Arc<UtxoCache<T>>,
     sync_mutex: Arc<Mutex<()>>,
-    script_from_t : M,
+    script_from_t: M,
     filter_delay: Duration,
     hashmap_timeout: Duration,
 ) -> Result<(), MempoolErrors>
 where
-T:Decodable + Clone,
-M:Fn(&T) -> Script + Copy
+    T: Decodable + Clone,
+    M: Fn(&T) -> Script + Copy,
 {
     println!("[filter_worker]: Starting");
     let mut hashmap = HashMap::<OutPoint, Script>::new();
@@ -56,7 +49,8 @@ M:Fn(&T) -> Script + Copy
     let mut succ_cnt = 0;
     loop {
         tokio::time::sleep(filter_delay).await;
-        { // Make sure the utxo cache is fully synced before attempting to make filters
+        {
+            // Make sure the utxo cache is fully synced before attempting to make filters
             let _guard = sync_mutex.lock().await;
             hashmap.clear();
             let timeout_future = tokio::time::sleep(timeout);
@@ -71,9 +65,11 @@ M:Fn(&T) -> Script + Copy
                     &mut hashmap,
                     broad_sender,
                     msg_sender,
-                    script_from_t)
-                ,timeout_reg);
-            tokio::select!{
+                    script_from_t,
+                ),
+                timeout_reg,
+            );
+            tokio::select! {
                 _ = &mut timeout_future => {
                     println!("Hashmap filling timed out");
                     timeout_handle.abort();
@@ -89,45 +85,53 @@ M:Fn(&T) -> Script + Copy
                     timeout = hashmap_timeout;
                 }
             };
-
         } // Unlock sync_mutex, sine we don't need the cache anymore
 
         make_filters(&ftree, &txtree, |out| {
-            hashmap.get(out).map_or_else( || {
-                Err(bip158::Error::UtxoMissing(*out))
-            }, |s| Ok(s.clone()))
-
+            hashmap
+                .get(out)
+                .map_or_else(|| Err(bip158::Error::UtxoMissing(*out)), |s| Ok(s.clone()))
         });
 
         let ff = make_full_filter(&txtree, |out| {
-            hashmap.get(out).map_or_else(|| Err(bip158::Error::UtxoMissing(*out)), |s| Ok(s.clone()))
-        }).map_err(|e| eprintln!("Error making the full filter! {:?}", e)).ok();
+            hashmap
+                .get(out)
+                .map_or_else(|| Err(bip158::Error::UtxoMissing(*out)), |s| Ok(s.clone()))
+        })
+        .map_err(|e| eprintln!("Error making the full filter! {:?}", e))
+        .ok();
         {
             let mut ffref = full_filter.lock().await;
             *ffref = ff;
             let l = ffref.as_ref().map(|f| f.content.len()).unwrap_or(0);
-            if ffref.is_none() { err_cnt += 1; } else { succ_cnt +=1; }
-            println!("Filter len: {:?}. Transactions in mempool: {}. Succ: {}. Error: {}", l, tx_tree_count(&txtree), succ_cnt, err_cnt);
+            if ffref.is_none() {
+                err_cnt += 1;
+            } else {
+                succ_cnt += 1;
+            }
+            println!(
+                "Filter len: {:?}. Transactions in mempool: {}. Succ: {}. Error: {}",
+                l,
+                tx_tree_count(&txtree),
+                succ_cnt,
+                err_cnt
+            );
         }
-    };
+    }
 }
-
 
 /// Listens to incoming messages until it gets a `Block` message
 /// Used to interrupt filter building
-async fn wait_for_block(
-    broad_sender: &broadcast::Sender<NetworkMessage>,
-){
+async fn wait_for_block(broad_sender: &broadcast::Sender<NetworkMessage>) {
     let mut receiver = broad_sender.subscribe();
     loop {
         let emsg = receiver.recv().await;
         match emsg {
-            Err(_) => {},
-            Ok(msg) => match msg{
+            Err(_) => {}
+            Ok(msg) => match msg {
                 NetworkMessage::Block(_) => break,
-                _ => ()
-            }
-
+                _ => (),
+            },
         }
     }
 }

@@ -1,4 +1,4 @@
-pub mod txtree;
-pub mod filtertree;
-pub mod worker;
 pub mod error;
+pub mod filtertree;
+pub mod txtree;
+pub mod worker;

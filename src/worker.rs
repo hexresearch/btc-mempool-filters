@@ -1,25 +1,22 @@
-mod tx;
 mod filters;
+mod tx;
 mod util;
-use tx::{tx_listener, request_mempool_tx};
-use bitcoin_utxo::cache::utxo::UtxoCache;
 use bitcoin::{
-    consensus::{Decodable, encode},
+    consensus::{encode, Decodable},
     network::message::NetworkMessage,
-    Script
+    Script,
 };
+use bitcoin_utxo::cache::utxo::UtxoCache;
 use ergvein_filters::mempool::ErgveinMempoolFilter;
-use futures::{Future, sink};
+use futures::{sink, Future};
 use rocksdb::DB;
 use std::{sync::Arc, time::Duration};
-use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio_stream::wrappers::UnboundedReceiverStream;
+use tx::{request_mempool_tx, tx_listener};
 
 use crate::{
-    error::MempoolErrors,
-    filtertree::FilterTree,
-    txtree::TxTree,
-    worker::filters::filter_worker
+    error::MempoolErrors, filtertree::FilterTree, txtree::TxTree, worker::filters::filter_worker,
 };
 
 /// Main mempool worker
@@ -38,18 +35,18 @@ pub async fn mempool_worker<T, M>(
     db: Arc<DB>,
     cache: Arc<UtxoCache<T>>,
     sync_mutex: Arc<Mutex<()>>,
-    script_from_t : M,
+    script_from_t: M,
     filter_delay: Duration,
     hashmap_timeout: Duration,
 ) -> (
     impl Future<Output = Result<(), MempoolErrors>>,
     impl Future<Output = Result<(), MempoolErrors>>,
     impl futures::Sink<NetworkMessage, Error = encode::Error>,
-    impl Unpin + futures::Stream<Item = NetworkMessage>
+    impl Unpin + futures::Stream<Item = NetworkMessage>,
 )
 where
-T:Decodable + Clone,
-M:Fn(&T) -> Script + Copy
+    T: Decodable + Clone,
+    M: Fn(&T) -> Script + Copy,
 {
     const BUFFER_SIZE: usize = 100;
     let (broad_sender, _) = broadcast::channel(BUFFER_SIZE);
@@ -79,8 +76,9 @@ M:Fn(&T) -> Script + Copy
                 sync_mutex.clone(),
                 script_from_t,
                 filter_delay,
-                hashmap_timeout
-            ).await
+                hashmap_timeout,
+            )
+            .await
         }
     };
 

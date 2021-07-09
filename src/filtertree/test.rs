@@ -1,32 +1,33 @@
-use bitcoin::{
-    consensus::deserialize,
-    hashes::hex::FromHex,
-    OutPoint, Script, Transaction
-};
-use ergvein_filters::util::is_script_indexable;
 use crate::filtertree::*;
 use crate::txtree::*;
+use bitcoin::{consensus::deserialize, hashes::hex::FromHex, OutPoint, Script, Transaction};
+use ergvein_filters::util::is_script_indexable;
 use std::io;
 use std::io::BufRead;
 
 #[test]
-fn full_filter(){
+fn full_filter() {
     let mut txtree = TxTree::new();
     let txs = load_txs("./test/block1-txs");
     insert_tx_batch(&mut txtree, txs.clone());
     let filter = make_full_filter(&txtree, emptyscripts).expect("Failed to match tx! ");
-    let (k0,k1) = get_full_prefix();
+    let (k0, k1) = get_full_prefix();
     for tx in txs {
-        let is_indexable = tx.output.iter().any(|o| is_script_indexable(&o.script_pubkey));
+        let is_indexable = tx
+            .output
+            .iter()
+            .any(|o| is_script_indexable(&o.script_pubkey));
         if is_indexable {
-            let b = filter.match_tx_outputs(k0, k1, &tx).expect("Filter matching error. ");
+            let b = filter
+                .match_tx_outputs(k0, k1, &tx)
+                .expect("Filter matching error. ");
             assert!(b, "Failed to match tx! It didn't match when it should");
         }
-    };
+    }
 }
 
 #[test]
-fn bucket_filters(){
+fn bucket_filters() {
     let mut txtree = TxTree::new();
     let txs = load_txs("./test/block1-txs");
     insert_tx_batch(&mut txtree, txs.clone());
@@ -34,13 +35,18 @@ fn bucket_filters(){
     let ftree = FilterTree::new();
     make_filters(&ftree, &txtree, emptyscripts);
 
-    for tx in txs.iter(){
-        let is_indexable = tx.output.iter().any(|o| is_script_indexable(&o.script_pubkey));
+    for tx in txs.iter() {
+        let is_indexable = tx
+            .output
+            .iter()
+            .any(|o| is_script_indexable(&o.script_pubkey));
         if is_indexable {
             let pref = make_prefix(&tx.txid());
             let filter = ftree.get(&pref).expect("Failed to get a filter");
             let (k0, k1) = mk_siphash_keys(&pref);
-            let b = filter.match_tx_outputs(k0, k1, &tx).expect("Filter matching error. ");
+            let b = filter
+                .match_tx_outputs(k0, k1, &tx)
+                .expect("Filter matching error. ");
             assert!(b, "Failed to match tx! It didn't match when it should");
         };
     }
@@ -56,6 +62,6 @@ fn load_txs(path: &str) -> Vec<Transaction> {
     res
 }
 
-fn emptyscripts(_: &OutPoint) -> Result<Script, bitcoin::util::bip158::Error>{
+fn emptyscripts(_: &OutPoint) -> Result<Script, bitcoin::util::bip158::Error> {
     Ok(Script::new())
 }

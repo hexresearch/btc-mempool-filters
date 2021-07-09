@@ -1,16 +1,14 @@
 use bitcoin::{
-    consensus::Decodable,
-    network::message::NetworkMessage,
-    OutPoint, Script, Transaction
+    consensus::Decodable, network::message::NetworkMessage, OutPoint, Script, Transaction,
 };
-use bitcoin_utxo::cache::utxo::{UtxoCache, get_utxo_noh};
+use bitcoin_utxo::cache::utxo::{get_utxo_noh, UtxoCache};
 use rocksdb::DB;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
-    txtree::{TxTree, get_transaction_script},
-    worker::request_mempool_tx
+    txtree::{get_transaction_script, TxTree},
+    worker::request_mempool_tx,
 };
 
 /// Fill a hashmap with all input scripts for all txs in the txs tree (and more!)
@@ -18,24 +16,23 @@ use crate::{
 /// Add all extra transactions to extra stack and repeat the process untill the stack is empty
 /// This is done because if there is a chain of transactions in the mempool and we request them during `fill_tx_input`
 /// they get added to `TxTree` via `tx_listener` and we have to process their inputs also.
-pub(crate) async fn fill_tx_map<T,M>(
+pub(crate) async fn fill_tx_map<T, M>(
     txtree: Arc<TxTree>,
     db: Arc<DB>,
     cache: Arc<UtxoCache<T>>,
     hashmap: &mut HashMap<OutPoint, Script>,
     broad_sender: &broadcast::Sender<NetworkMessage>,
     msg_sender: &mpsc::UnboundedSender<NetworkMessage>,
-    script_from_t : M,
-)
-where
-T:Decodable + Clone,
-M:Fn(&T) -> Script + Copy
+    script_from_t: M,
+) where
+    T: Decodable + Clone,
+    M: Fn(&T) -> Script + Copy,
 {
     let mut extra = Vec::new();
-    for txs in txtree.iter(){
-        for tx in txs.values(){
-            if !tx.is_coin_base(){
-                for i in tx.input.iter(){
+    for txs in txtree.iter() {
+        for tx in txs.values() {
+            if !tx.is_coin_base() {
+                for i in tx.input.iter() {
                     let stx = fill_tx_input(
                         &i.previous_output,
                         txtree.clone(),
@@ -45,16 +42,17 @@ M:Fn(&T) -> Script + Copy
                         broad_sender,
                         msg_sender,
                         script_from_t,
-                    ).await;
+                    )
+                    .await;
                     stx.map(|tx| extra.push(tx));
-                };
+                }
             }
         }
     }
     while !extra.is_empty() {
         let mut next_extra = Vec::new();
-        for tx in extra.iter(){
-            for i in tx.input.iter(){
+        for tx in extra.iter() {
+            for i in tx.input.iter() {
                 let stx = fill_tx_input(
                     &i.previous_output,
                     txtree.clone(),
@@ -64,7 +62,8 @@ M:Fn(&T) -> Script + Copy
                     broad_sender,
                     msg_sender,
                     script_from_t,
-                ).await;
+                )
+                .await;
                 stx.map(|tx| next_extra.push(tx));
             }
         }
@@ -87,25 +86,24 @@ async fn fill_tx_input<T, M>(
     hashmap: &mut HashMap<OutPoint, Script>,
     broad_sender: &broadcast::Sender<NetworkMessage>,
     msg_sender: &mpsc::UnboundedSender<NetworkMessage>,
-    script_from_t : M,
+    script_from_t: M,
 ) -> Option<Transaction>
 where
-T:Decodable + Clone,
-M:Fn(&T) -> Script + Copy
+    T: Decodable + Clone,
+    M: Fn(&T) -> Script + Copy,
 {
     let mut res = None;
-    let coin = get_utxo_noh(
-        &db.clone(),
-        &cache.clone(),
-        &i);
+    let coin = get_utxo_noh(&db.clone(), &cache.clone(), &i);
     match coin {
         Some(c) => {
             hashmap.insert(i.clone(), script_from_t(&c));
         }
         None => {
             let mscript = get_transaction_script(&txtree, i);
-            match mscript{
-                Some(script) => {hashmap.insert(i.clone(), script);},
+            match mscript {
+                Some(script) => {
+                    hashmap.insert(i.clone(), script);
+                }
                 None => {
                     let stx = request_mempool_tx(i.txid, broad_sender, msg_sender).await;
                     match stx {
@@ -113,10 +111,10 @@ M:Fn(&T) -> Script + Copy
                             let script = tx.output[i.vout as usize].script_pubkey.clone();
                             hashmap.insert(i.clone(), script);
                             res = Some(tx);
-                        },
+                        }
                         Err(_) => {
                             eprintln!("Failed to get Tx {:?} from mempool", i.txid);
-                        },
+                        }
                     }
                 }
             }
