@@ -36,7 +36,7 @@ pub fn make_full_filter<M>(txtree: &TxTree, script_getter: M) -> Result<ErgveinM
         ErgveinMempoolFilter::new_script_filter(k0, k1, txs, &script_getter)
     }
 
-fn mk_siphash_keys(pref: &TxPrefix) -> (u64, u64){
+pub fn mk_siphash_keys(pref: &TxPrefix) -> (u64, u64){
     let seed : Vec<u8> = pref.iter().cycle().take(8).cloned().collect();
     let k256 = bitcoin_hashes::sha256::Hash::hash(seed.as_slice()).into_inner();
     let key_1 = endian::slice_to_u64_le(&k256[0..8]);
