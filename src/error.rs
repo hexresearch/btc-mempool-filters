@@ -2,6 +2,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum MempoolErrors {
-    #[error("Mempool request failed")]
-    MempoolRequestFail,
+    #[error("Failed to request Tx")]
+    RequestTx,
 }

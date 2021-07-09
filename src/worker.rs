@@ -35,6 +35,16 @@ use crate::txtree::TxTree;
 use crate::txtree::remove_batch;
 use crate::txtree::tx_tree_count;
 
+
+/// Main mempool worker
+/// Receives Arcs to store its data in: `txtree`, `ftree`, `full_filter`
+/// Receives handles to the UTXO set: cache + persistent db
+/// `sync_mutex` is used to signal when the utxo is fully synced
+/// `script_from_t` is used to convert Coin representation from `T` in the `UtxoCache` to `Script`
+/// `filter_delay` and `hashmap_timeout` set the frequency of filter creation
+/// and how long it is allowed to block utxo cache
+/// Returns two computations for its two sub-worker: `tx_listener` and `filter_worker`
+/// And also returns its message sink and stream for routing in the main function
 pub async fn mempool_worker<T, M>(
     txtree: Arc<TxTree>,
     ftree: Arc<FilterTree>,
@@ -96,6 +106,16 @@ M:Fn(&T) -> Script + Copy
     (tx_future, filt_future, msg_sink, msg_stream)
 }
 
+/// Sub-worker. Builds filters based on the current mempool
+/// Wait minimal period: filter_delay
+/// Wait untill the utxo cache is fully synced (wait for `sync_mutex`)
+/// Create a hashmap and fill input scripts from all inputs of all transactions in the mempool (in the `TxTree`)
+/// If during the filling a new block is received, abort the attempt.
+/// If the filling takes too long (`hashmap_timeout`) abort the attempt and yield the mutex.
+/// This is done to prevent possible race between utxo sync and filters.
+/// Just in case the timeout is not enough, increase it by 20% each time we timed out
+/// After we filled the hashmap yield the mutex, run `make_filters` and `make_full_filter`
+/// `script_from_t` is used to convert Coin representation from `T` in the `UtxoCache` to `Script`
 pub async fn filter_worker<T, M>(
     txtree: Arc<TxTree>,
     broad_sender: &broadcast::Sender<NetworkMessage>,
@@ -148,22 +168,17 @@ M:Fn(&T) -> Script + Copy
                     println!("A new block interrupted filter making. Aborting filters!");
                     timeout_handle.abort();
                 }
-                res = fill_fut => {
-                    match res {
-                        Ok(_) => println!("[filter_worker]: Fill success. Attempting to make filters"),
-                        Err(e) => eprint!("Failed to fill inputs! {:?}", e)
-                    }
+                _ = fill_fut => {
                     // set the timeout to the default value
                     timeout = hashmap_timeout;
                 }
             };
 
         } // Unlock sync_mutex, sine we don't need the cache anymore
+
         make_filters(&ftree, &txtree, |out| {
             hashmap.get(out).map_or_else( || {
-                let e = Err(bip158::Error::UtxoMissing(*out));
-                eprintln!("Failed to extract the script for: {:?}", e);
-                e
+                Err(bip158::Error::UtxoMissing(*out))
             }, |s| Ok(s.clone()))
 
         });
@@ -174,14 +189,16 @@ M:Fn(&T) -> Script + Copy
         {
             let mut ffref = full_filter.lock().await;
             *ffref = ff;
-            let l = ffref.as_ref().map(|f| f.content.len());
+            let l = ffref.as_ref().map(|f| f.content.len()).unwrap_or(0);
             if ffref.is_none() { err_cnt += 1; } else { succ_cnt +=1; }
             println!("Filter len: {:?}. Transactions in mempool: {}. Succ: {}. Error: {}", l, tx_tree_count(&txtree), succ_cnt, err_cnt);
         }
-        println!("[filter_worker]: Filters done");
     };
 }
 
+/// Sub-worker. Listen to incoming messages for the node
+/// Pick all new transactions from `Inv` messages and request them
+/// Get transactions and add the to the `TxTree`
 pub async fn tx_listener(
     txtree: Arc<TxTree>,
     broad_sender: &broadcast::Sender<NetworkMessage>,
@@ -198,9 +215,11 @@ pub async fn tx_listener(
                             Inventory::WitnessTransaction(_) => true,
                             _ => false
                         }).cloned().collect();
-                        // println!("Received {:?} invs. Of which {:?} are txs", ids.len(), txids.len());
                         msg_sender.send(NetworkMessage::GetData(txids))
-                            .map_err(|e| { println!("Error when requesting txs: {:?}", e); MempoolErrors::MempoolRequestFail})?;
+                            .map_err(|e| {
+                                println!("Error when requesting txs: {:?}", e);
+                                MempoolErrors::RequestTx
+                            })?;
                     },
                     NetworkMessage::Tx(tx) => {
                         let txtree = txtree.clone();
@@ -218,6 +237,8 @@ pub async fn tx_listener(
     };
 }
 
+/// Request a `Transaction` from the node's mempool
+/// Re-request every 5 seconds
 pub async fn request_mempool_tx(
     txid: Txid,
     broad_sender: &broadcast::Sender<NetworkMessage>,
@@ -226,9 +247,9 @@ pub async fn request_mempool_tx(
     let mut receiver = broad_sender.subscribe();
     println!("Requesting from node. Tx: {:?}", txid);
     msg_sender.send(NetworkMessage::GetData(vec![Inventory::Transaction(txid)])).map_err(
-        |_| MempoolErrors::MempoolRequestFail
+        |_| MempoolErrors::RequestTx
     )?;
-    let timeout_future = tokio::time::sleep(Duration::from_secs(10));
+    let timeout_future = tokio::time::sleep(Duration::from_secs(5));
     tokio::pin!(timeout_future);
     let mut res = None;
     while res == None {
@@ -241,7 +262,7 @@ pub async fn request_mempool_tx(
                 Err(e) => {
                     eprintln!("Request tx {:?} failed with recv error: {:?}", txid, e);
                     msg_sender.send(NetworkMessage::GetData(vec![Inventory::Transaction(txid)])).map_err(
-                        |_| MempoolErrors::MempoolRequestFail
+                        |_| MempoolErrors::RequestTx
                     )?;
                 }
                 Ok(msg) => match msg {
@@ -253,9 +274,14 @@ pub async fn request_mempool_tx(
             }
         }
     };
-    res.ok_or(MempoolErrors::MempoolRequestFail)
+    res.ok_or(MempoolErrors::RequestTx)
 }
 
+/// Fill a hashmap with all input scripts for all txs in the txs tree (and more!)
+/// Run fill_tx_input for all inputs
+/// Add all extra transactions to extra stack and repeat the process untill the stack is empty
+/// This is done because if there is a chain of transactions in the mempool and we request them during `fill_tx_input`
+/// they get added to `TxTree` via `tx_listener` and we have to process their inputs also.
 async fn fill_tx_map<T,M>(
     txtree: Arc<TxTree>,
     db: Arc<DB>,
@@ -310,6 +336,13 @@ M:Fn(&T) -> Script + Copy
     }
 }
 
+/// Get the script associated with the OutPoint i and add it to the hashmap
+/// First check if it's in the utxo: cache, or the persistent storage
+/// If not - assume it's in the mempool.
+/// Check if we have the tx in the txtree
+/// If it's not in the txtree, ask the node via `GetData`.
+/// The node sends `Tx` message in response if the `Tx` in the mempool
+/// If the tx was not present in cache or txtree, return the tx so that it can be filled later
 async fn fill_tx_input<T, M>(
     i: &OutPoint,
     txtree: Arc<TxTree>,
@@ -356,6 +389,8 @@ M:Fn(&T) -> Script + Copy
     res
 }
 
+/// Listens to incoming messages until it gets a `Block` message
+/// Used to interrupt filter building
 async fn wait_for_block(
     broad_sender: &broadcast::Sender<NetworkMessage>,
 ){
