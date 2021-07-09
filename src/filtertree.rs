@@ -6,14 +6,18 @@ use ergvein_filters::mempool::ErgveinMempoolFilter;
 
 use crate::txtree::{TxPrefix, TxTree};
 
+/// Main type. Stores filters to corresponding branches of `TxTree`
+/// We store full filter separately to take advantage of DashMap's concurrency
 pub type FilterTree = DashMap<TxPrefix, ErgveinMempoolFilter>;
 
+/// Get keys for the full filter. This is basically a static function
 pub fn get_full_prefix() -> (u64, u64){
     let k0 = u64::from_le_bytes(*b"ergvein0");
     let k1 = u64::from_le_bytes(*b"filters0");
     (k0,k1)
 }
 
+/// Make filters for each branch of `TxTree` and store them in the corresponding branch of `FilterTree`
 pub fn make_filters<M>(ftree: &FilterTree, txtree: &TxTree, script_getter: M)
     where M: Fn(&OutPoint) -> Result<Script, bitcoin::util::bip158::Error>{
         ftree.clear();
@@ -27,6 +31,8 @@ pub fn make_filters<M>(ftree: &FilterTree, txtree: &TxTree, script_getter: M)
         });
     }
 
+/// Make full filter with all transactions in a `TxTree`.
+/// This one does not require `FilterTree` but we still keep the function in this module
 pub fn make_full_filter<M>(txtree: &TxTree, script_getter: M) -> Result<ErgveinMempoolFilter, bitcoin::util::bip158::Error>
     where M: Fn(&OutPoint) -> Result<Script, bitcoin::util::bip158::Error>{
         let (k0,k1) = get_full_prefix();
@@ -36,6 +42,10 @@ pub fn make_full_filter<M>(txtree: &TxTree, script_getter: M) -> Result<ErgveinM
         ErgveinMempoolFilter::new_script_filter(k0, k1, txs, &script_getter)
     }
 
+/// Make siphash keys based on the prefix.
+/// `TxPrefix` is 2 bytes, and we need 16 bytes, thus
+/// First we cycle 2 prefix bytes to get 16 bytes seed
+/// Then we take sha256(seed) and split it into two u64s.
 pub fn mk_siphash_keys(pref: &TxPrefix) -> (u64, u64){
     let seed : Vec<u8> = pref.iter().cycle().take(8).cloned().collect();
     let k256 = bitcoin_hashes::sha256::Hash::hash(seed.as_slice()).into_inner();
