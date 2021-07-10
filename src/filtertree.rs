@@ -31,7 +31,7 @@ where
         let filt = ErgveinMempoolFilter::new_script_filter(
             k0,
             k1,
-            txs.values().cloned().collect(),
+            txs.values().map(|(tx, _)| tx).cloned().collect(),
             &script_getter,
         );
         filt.map_or_else(
@@ -55,7 +55,12 @@ where
     let (k0, k1) = get_full_prefix();
     let txs: Vec<Transaction> = txtree
         .iter()
-        .flat_map(|tmap| tmap.values().cloned().collect::<Vec<Transaction>>())
+        .flat_map(|tmap| {
+            tmap.values()
+                .map(|(tx, _)| tx)
+                .cloned()
+                .collect::<Vec<Transaction>>()
+        })
         .collect();
     ErgveinMempoolFilter::new_script_filter(k0, k1, txs, &script_getter)
 }

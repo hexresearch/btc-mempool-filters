@@ -30,7 +30,7 @@ pub(crate) async fn fill_tx_map<T, M>(
 {
     let mut extra = Vec::new();
     for txs in txtree.iter() {
-        for tx in txs.values() {
+        for (tx, _) in txs.values() {
             if !tx.is_coin_base() {
                 for i in tx.input.iter() {
                     let stx = fill_tx_input(
@@ -44,7 +44,9 @@ pub(crate) async fn fill_tx_map<T, M>(
                         script_from_t,
                     )
                     .await;
-                    if let Some(tx) = stx { extra.push(tx) }
+                    if let Some(tx) = stx {
+                        extra.push(tx)
+                    }
                 }
             }
         }
@@ -64,7 +66,9 @@ pub(crate) async fn fill_tx_map<T, M>(
                     script_from_t,
                 )
                 .await;
-                if let Some(tx) = stx { next_extra.push(tx) }
+                if let Some(tx) = stx {
+                    next_extra.push(tx)
+                }
             }
         }
         extra = next_extra;

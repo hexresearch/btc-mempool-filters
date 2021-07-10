@@ -1,5 +1,6 @@
 use bitcoin::{OutPoint, Script, Transaction, Txid};
 use bitcoin_hashes::Hash;
+use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
 use std::collections::HashMap;
 
@@ -15,21 +16,23 @@ pub const TX_PREFIX_MASK: [u8; TX_PREFIX_BYTES] = [0b11111111, 0b11000000];
 /// Transactions prefix
 pub type TxPrefix = [u8; TX_PREFIX_BYTES];
 
+pub type TxTimestamp = DateTime<Utc>;
+
 /// Main type. Represents the mempool with transactions grouped according to their prefix
-pub type TxTree = DashMap<TxPrefix, HashMap<Txid, Transaction>>;
+pub type TxTree = DashMap<TxPrefix, HashMap<Txid, (Transaction, TxTimestamp)>>;
 
 /// Insert a single transaction into `TxTree`
-pub fn insert_tx(txtree: &TxTree, tx: &Transaction) {
+pub fn insert_tx(txtree: &TxTree, tx: &Transaction, timestamp: TxTimestamp) {
     let txid = tx.txid();
     let key = make_prefix(&txid);
     txtree
         .entry(key)
         .and_modify(|v| {
-            v.insert(txid, tx.clone());
+            v.insert(txid, (tx.clone(), timestamp));
         })
         .or_insert_with(|| {
             let mut hm = HashMap::new();
-            hm.insert(txid, tx.clone());
+            hm.insert(txid, (tx.clone(), timestamp));
             hm
         });
 }
@@ -40,8 +43,8 @@ pub fn tx_tree_count(txtree: &TxTree) -> usize {
 }
 
 /// Add a batch of transactions to `TxTree`
-pub fn insert_tx_batch(txtree: &TxTree, txs: Vec<Transaction>) {
-    txs.iter().for_each(|tx| insert_tx(txtree, tx));
+pub fn insert_tx_batch(txtree: &TxTree, txs: Vec<Transaction>, timestamp: TxTimestamp) {
+    txs.iter().for_each(|tx| insert_tx(txtree, tx, timestamp));
 }
 
 /// Remove a batch of transactions from `TxTree`
@@ -54,6 +57,15 @@ pub fn remove_batch(txtree: &TxTree, txs: &[Transaction]) {
             txs.remove(&txid);
         });
     });
+    txtree.retain(|_, v| !v.is_empty());
+}
+
+pub fn remove_stale(txtree: &TxTree) {
+    let now = Utc::now();
+    let stale_time = Duration::weeks(2);
+    for mut txs in txtree.iter_mut() {
+        txs.retain(|_, (_, ts)| now.signed_duration_since(*ts) < stale_time)
+    }
     txtree.retain(|_, v| !v.is_empty());
 }
 
@@ -72,6 +84,6 @@ pub fn get_transaction_script(txtree: &TxTree, out: &OutPoint) -> Option<Script>
     let txid = &out.txid;
     let pref = make_prefix(txid);
     let txs = txtree.get(&pref)?;
-    let tx = txs.get(txid)?;
+    let (tx, _) = txs.get(txid)?;
     Some(tx.output[out.vout as usize].script_pubkey.clone())
 }

@@ -13,7 +13,7 @@ use rocksdb::DB;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tx::{request_mempool_tx, tx_listener};
+use tx::{request_mempool_tx, tx_cleaner, tx_listener};
 
 use crate::{
     error::MempoolErrors, filtertree::FilterTree, txtree::TxTree, worker::filters::filter_worker,
@@ -40,7 +40,6 @@ pub async fn mempool_worker<T, M>(
     hashmap_timeout: Duration,
 ) -> (
     impl Future<Output = Result<(), MempoolErrors>>,
-    impl Future<Output = Result<(), MempoolErrors>>,
     impl futures::Sink<NetworkMessage, Error = encode::Error>,
     impl Unpin + futures::Stream<Item = NetworkMessage>,
 )
@@ -55,14 +54,11 @@ where
         let broad_sender = broad_sender.clone();
         let msg_sender = msg_sender.clone();
         let txtree = txtree.clone();
-        async move {
-            loop {
-                tx_listener(txtree.clone(), &broad_sender, &msg_sender).await?;
-            }
-        }
+        async move { tx_listener(txtree.clone(), &broad_sender, &msg_sender).await }
     };
     let filt_future = {
         let broad_sender = broad_sender.clone();
+        let txtree = txtree.clone();
         async move {
             filter_worker(
                 txtree.clone(),
@@ -81,10 +77,28 @@ where
         }
     };
 
+    let stale_worker = async move { tx_cleaner(txtree.clone()).await };
+
     let msg_stream = UnboundedReceiverStream::new(msg_reciver);
     let msg_sink = sink::unfold(broad_sender, |broad_sender, msg| async move {
         broad_sender.send(msg).unwrap_or(0);
         Ok::<_, encode::Error>(broad_sender)
     });
-    (tx_future, filt_future, msg_sink, msg_stream)
+
+    let combined_future = async move {
+        let lol;
+        tokio::select! {
+            res = filt_future => {
+                lol = res.map_err(|e| {eprintln!("Filters stoped with error: {}", e); e});
+            }
+            res = tx_future => {
+                lol = res.map_err(|e| {eprintln!("Filters stoped with error: {}", e); e});
+            }
+            res = stale_worker => {
+                lol = res.map_err(|e| {eprintln!("Filters stoped with error: {}", e); e});
+            }
+        };
+        lol
+    };
+    (combined_future, msg_sink, msg_stream)
 }

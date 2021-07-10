@@ -1,15 +1,16 @@
 use crate::filtertree::*;
 use crate::txtree::*;
 use bitcoin::{consensus::deserialize, hashes::hex::FromHex, OutPoint, Script, Transaction};
+use chrono::Utc;
 use ergvein_filters::util::is_script_indexable;
 use std::io;
 use std::io::BufRead;
 
 #[test]
 fn full_filter() {
-    let mut txtree = TxTree::new();
+    let txtree = TxTree::new();
     let txs = load_txs("./test/block1-txs");
-    insert_tx_batch(&mut txtree, txs.clone());
+    insert_tx_batch(&txtree, txs.clone(), Utc::now());
     let filter = make_full_filter(&txtree, emptyscripts).expect("Failed to match tx! ");
     let (k0, k1) = get_full_prefix();
     for tx in txs {
@@ -28,9 +29,9 @@ fn full_filter() {
 
 #[test]
 fn bucket_filters() {
-    let mut txtree = TxTree::new();
+    let txtree = TxTree::new();
     let txs = load_txs("./test/block1-txs");
-    insert_tx_batch(&mut txtree, txs.clone());
+    insert_tx_batch(&txtree, txs.clone(), Utc::now());
 
     let ftree = FilterTree::new();
     make_filters(&ftree, &txtree, emptyscripts);

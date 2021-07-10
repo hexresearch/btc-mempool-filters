@@ -128,7 +128,11 @@ async fn wait_for_block(broad_sender: &broadcast::Sender<NetworkMessage>) {
         let emsg = receiver.recv().await;
         match emsg {
             Err(_) => {}
-            Ok(msg) => if let NetworkMessage::Block(_) = msg { break },
+            Ok(msg) => {
+                if let NetworkMessage::Block(_) = msg {
+                    break;
+                }
+            }
         }
     }
 }

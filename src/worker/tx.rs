@@ -1,15 +1,14 @@
+use crate::{
+    error::MempoolErrors,
+    txtree::{insert_tx, remove_batch, remove_stale, TxTree},
+};
 use bitcoin::{
     network::{message::NetworkMessage, message_blockdata::Inventory},
     Transaction, Txid,
 };
+use chrono::Utc;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{broadcast, mpsc};
-
-use crate::{
-    error::MempoolErrors,
-    txtree::TxTree,
-    txtree::{insert_tx, remove_batch},
-};
 
 /// Sub-worker. Listen to incoming messages for the node
 /// Pick all new transactions from `Inv` messages and request them
@@ -36,7 +35,7 @@ pub async fn tx_listener(
                     },
                     NetworkMessage::Tx(tx) => {
                         let txtree = txtree.clone();
-                        insert_tx(&txtree, &tx);
+                        insert_tx(&txtree, &tx, Utc::now());
                     }
                     NetworkMessage::Block(b) => {
                         let txtree = txtree.clone();
@@ -88,4 +87,12 @@ pub async fn request_mempool_tx(
         }
     }
     res.ok_or(MempoolErrors::RequestTx)
+}
+
+/// Worker that removes stale transactions from the mempool
+pub async fn tx_cleaner(txtree: Arc<TxTree>) -> Result<(), MempoolErrors> {
+    loop {
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+        remove_stale(&txtree);
+    }
 }
