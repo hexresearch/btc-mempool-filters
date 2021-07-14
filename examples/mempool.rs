@@ -18,6 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct FilterCoin {
@@ -64,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let txtree = Arc::new(TxTree::new());
     let ftree = Arc::new(FilterTree::new());
-    let full_filter = Arc::new(Mutex::new(None));
+    let full_filter = Arc::new(RwLock::new(None));
     let sync_mutex = Arc::new(Mutex::new(()));
     let filter_delay = Duration::from_secs(30);
     let hashmap_timeout = Duration::from_secs(10);

@@ -11,7 +11,7 @@ use ergvein_filters::mempool::ErgveinMempoolFilter;
 use futures::{sink, Future};
 use rocksdb::DB;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tx::{request_mempool_tx, tx_cleaner, tx_listener};
 
@@ -31,7 +31,7 @@ use crate::{
 pub async fn mempool_worker<T, M>(
     txtree: Arc<TxTree>,
     ftree: Arc<FilterTree>,
-    full_filter: Arc<Mutex<Option<ErgveinMempoolFilter>>>,
+    full_filter: Arc<RwLock<Option<ErgveinMempoolFilter>>>,
     db: Arc<DB>,
     cache: Arc<UtxoCache<T>>,
     sync_mutex: Arc<Mutex<()>>,

@@ -6,7 +6,7 @@ use ergvein_filters::mempool::ErgveinMempoolFilter;
 use futures::future::{AbortHandle, Abortable};
 use rocksdb::DB;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio::sync::{broadcast, mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, RwLock, Mutex};
 
 use crate::{
     error::MempoolErrors,
@@ -30,7 +30,7 @@ pub async fn filter_worker<T, M>(
     broad_sender: &broadcast::Sender<NetworkMessage>,
     msg_sender: &mpsc::UnboundedSender<NetworkMessage>,
     ftree: Arc<FilterTree>,
-    full_filter: Arc<Mutex<Option<ErgveinMempoolFilter>>>,
+    full_filter: Arc<RwLock<Option<ErgveinMempoolFilter>>>,
     db: Arc<DB>,
     cache: Arc<UtxoCache<T>>,
     sync_mutex: Arc<Mutex<()>>,
@@ -101,7 +101,7 @@ where
         .map_err(|e| eprintln!("Error making the full filter! {:?}", e))
         .ok();
         {
-            let mut ffref = full_filter.lock().await;
+            let mut ffref = full_filter.write().await;
             *ffref = ff;
             let l = ffref.as_ref().map(|f| f.content.len()).unwrap_or(0);
             if ffref.is_none() {
