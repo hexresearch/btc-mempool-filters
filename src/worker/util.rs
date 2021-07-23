@@ -29,28 +29,34 @@ pub(crate) async fn fill_tx_map<T, M>(
     M: Fn(&T) -> Script + Copy,
 {
     let mut extra = Vec::new();
-    for txs in txtree.iter() {
-        for (tx, _) in txs.values() {
-            if !tx.is_coin_base() {
-                for i in tx.input.iter() {
-                    let stx = fill_tx_input(
-                        &i.previous_output,
-                        txtree.clone(),
-                        db.clone(),
-                        cache.clone(),
-                        hashmap,
-                        broad_sender,
-                        msg_sender,
-                        script_from_t,
-                    )
-                    .await;
-                    if let Some(tx) = stx {
-                        extra.push(tx)
-                    }
-                }
-            }
+    let mut inputs = Vec::new();
+
+    // Fill a separate structure to minimize the time we use txtree.iter
+    txtree.iter().for_each(|txs|
+        txs.values().for_each(|(tx,_)|
+            tx.input.iter().for_each(|i|
+                inputs.push(i.previous_output)
+            )
+        )
+    );
+
+    for i in inputs {
+        let stx = fill_tx_input(
+            &i,
+            txtree.clone(),
+            db.clone(),
+            cache.clone(),
+            hashmap,
+            broad_sender,
+            msg_sender,
+            script_from_t,
+        )
+        .await;
+        if let Some(tx) = stx {
+            extra.push(tx)
         }
     }
+
     while !extra.is_empty() {
         let mut next_extra = Vec::new();
         for tx in extra.iter() {

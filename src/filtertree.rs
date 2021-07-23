@@ -70,7 +70,7 @@ where
 /// First we cycle 2 prefix bytes to get 16 bytes seed
 /// Then we take sha256(seed) and split it into two u64s.
 pub fn mk_siphash_keys(pref: &TxPrefix) -> (u64, u64) {
-    let seed: Vec<u8> = pref.iter().cycle().take(8).cloned().collect();
+    let seed: Vec<u8> = pref.iter().cycle().take(16).cloned().collect();
     let k256 = bitcoin_hashes::sha256::Hash::hash(seed.as_slice()).into_inner();
     let key_1 = endian::slice_to_u64_le(&k256[0..8]);
     let key_2 = endian::slice_to_u64_le(&k256[8..16]);
